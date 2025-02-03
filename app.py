@@ -31,7 +31,7 @@ from email import encoders
 SECRET_KEY = os.urandom(24)
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="https://www.studypage.cloud")
 api = Api(app)
 app.config["SECRET_KEY"] = os.urandom(24)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///studypage.db'
@@ -169,7 +169,7 @@ jwt = JWTManager(app)
 bcrypt = Bcrypt(app)
 mail = Mail(app) 
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
-CORS(app,resources={r"/*": {"origins": "https://www.studypage.cloud/"}})
+CORS(app,resources={r"/api/*": {"origins": "https://www.studypage.cloud/"}})
 
 @app.before_request
 def handle_options_request():
