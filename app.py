@@ -169,7 +169,7 @@ jwt = JWTManager(app)
 bcrypt = Bcrypt(app)
 mail = Mail(app) 
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
-CORS(app,resources={r"/*": {"origins": "http://localhost:3001"}})
+CORS(app,resources={r"/*": {"origins": "https://www.studypage.cloud/"}})
 
 # PAYSTACK_SECRET_KEY ="sk_test_e43f7706b3578021e3dc09d1ad730bf60c2e33c8"
 PAYSTACK_SECRET_KEY =os.environ.get('PAYSTACK_SECRET_KEY')
@@ -338,7 +338,7 @@ def google_signup():
     token = s.dumps(new_user.email, salt='password-reset-salt')
     reset_url = url_for('reset_password', token=token, _external=True)
     msg = Message('Set Your Password', sender=app.config['MAIL_SENDER'], recipients=[new_user.email])
-    msg.body = f'Please click the following link to set your password: {reset_url.replace("http://127.0.0.1:5000", "http://localhost:3001")}'
+    msg.body = f'Please click the following link to set your password: {reset_url.replace("https://backendstudypage.onrender.com", "https://www.studypage.cloud/")}'
     try:
         mail.send(msg)
     except Exception as e:
