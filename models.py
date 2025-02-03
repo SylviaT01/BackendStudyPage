@@ -48,7 +48,33 @@ class Expert(db.Model):
     subject_id = db.Column(db.Integer, db.ForeignKey('subjects.id'))
     project_type = db.relationship('ProjectType', backref='experts')
     subject = db.relationship('Subject', backref='experts')
+    rating_avg = db.Column(db.Float, default=0.0)
+    total_reviews = db.Column(db.Integer, default=0)
+    success_rate = db.Column(db.Float, default=0.0)
+    is_ai_free = db.Column(db.Boolean, default=False)
 
+class Rating(db.Model):
+    __tablename__ = 'ratings'
+    id = db.Column(db.Integer, primary_key=True)
+    expert_id = db.Column(db.Integer, db.ForeignKey('experts.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    rating = db.Column(db.Float, nullable=False)
+    review = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    expert = db.relationship('Expert', backref='ratings')
+    user = db.relationship('User', backref='ratings')
+
+class Comment(db.Model):
+    __tablename__ = 'comments'
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    expert_id = db.Column(db.Integer, db.ForeignKey('experts.id'), nullable=False)
+    user_id = db.Column(db.Integer, nullable=False)
+    
+    expert = db.relationship('Expert', backref='comments')
+    # user = db.relationship('User', backref='comments', foreign_keys=[user_id])
 
 class ProjectType(db.Model):
     __tablename__ = 'project_types'
@@ -69,7 +95,7 @@ class Conversation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     expert_id = db.Column(db.Integer, db.ForeignKey('experts.id'), nullable=False)
-    project_id = db.Column(db.Integer, db.ForeignKey('project_requests.id'), nullable=False)
+    project_id = db.Column(db.Integer, db.ForeignKey('project_requests.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Remove the backref from here and keep it simple

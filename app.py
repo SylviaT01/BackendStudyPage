@@ -3,8 +3,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_cors import CORS
 from functools import wraps
+import traceback
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity, create_refresh_token, get_jwt, verify_jwt_in_request, decode_token
-from models import db, User, Expert, Service, ProjectRequest, ProjectType, Subject, Message as MessageModel, Conversation
+from models import db, User, Expert, Service, ProjectRequest, ProjectType, Subject, Message as MessageModel, Conversation, Comment
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from flask_mail import Mail, Message
@@ -14,10 +15,12 @@ from flask_restful import Resource,Api
 from flask_mail import Mail, Message as MessageInstance 
 from flask_socketio import SocketIO, emit
 import cloudinary.uploader
+from random import uniform, randint
 from datetime import datetime
 from flask import url_for
 import os
 import re
+import random
 
 import requests
 import smtplib
@@ -205,6 +208,75 @@ def verify_payment():
 
     except Exception as e:
         return jsonify({"success": False, "message": f"An error occurred: {str(e)}"}), 500
+
+@app.route('/admin/update-expert-features', methods=['POST'])
+def update_expert_features():
+    try:
+        experts = Expert.query.all()
+        
+        for expert in experts:
+            expert.is_ai_free = random.random() < 0.6
+        
+        db.session.commit()
+        return jsonify({'message': 'Expert features updated successfully'}), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/experts/<int:expert_id>/comments', methods=['GET'])
+def get_expert_comments(expert_id):
+    comments = Comment.query.filter_by(expert_id=expert_id).order_by(Comment.created_at.desc()).all()
+    return jsonify({
+        'comments': [{
+            'id': comment.id,
+            'content': comment.content,
+            'created_at': comment.created_at.isoformat(),
+            # 'user_name': comment.user.username,
+            'user_id': comment.user_id
+        } for comment in comments]
+    })
+
+@app.route('/experts/<int:expert_id>/comments/<int:currentUser_id>', methods=['POST'])
+# @jwt_required()
+def add_expert_comment(expert_id,currentUser_id):
+    data = request.get_json()
+    comment = Comment(
+        content=data['content'],
+        expert_id=expert_id,
+        user_id=currentUser_id
+    )
+    db.session.add(comment)
+    db.session.commit()
+    return jsonify({
+        'message': 'Comment added successfully',
+        'comment': {
+            'id': comment.id,
+            'content': comment.content,
+            'created_at': comment.created_at.isoformat(),
+            # 'user_name': comment.user.username,
+            'user_id': comment.user_id
+        }
+    })
+
+@app.route('/admin/update-expert-stats', methods=['POST'])
+def update_expert_stats():
+    try:
+        experts = Expert.query.all()
+        
+        for expert in experts:
+            expert.rating_avg = round(uniform(4.0, 5.0), 1)
+            
+            expert.total_reviews = randint(15, 50)
+            
+            expert.success_rate = round(uniform(92.0, 99.0), 1)
+        
+        db.session.commit()
+        return jsonify({'message': 'Expert statistics updated successfully'}), 200
+    
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/test', methods=['GET'])
 def test():
@@ -673,6 +745,17 @@ def get_experts():
     output = []
 
     for expert in experts:
+        success_rate_str = f"{expert.success_rate:.1f}%" if expert.success_rate is not None else "0.0%"
+        comments = []
+        for comment in expert.comments:
+            comment_data = {
+                'id': comment.id,
+                'content': comment.content,
+                'created_at': comment.created_at.isoformat(),
+                # 'user_name': comment.user.username  
+            }
+            comments.append(comment_data)
+
         expert_data = {
             'id': expert.id,
             'name': expert.name,
@@ -684,11 +767,52 @@ def get_experts():
             'languages': expert.languages,
             'projectType': expert.project_type.name if expert.project_type else None,  # Corrected to use `project_type`
             'subject': expert.subject.name if expert.subject else None,  # Corrected to use `subject`
-            'profilePicture': expert.profile_picture
+            'profilePicture': expert.profile_picture,
+            'rating': expert.rating_avg,
+            'totalReviews': expert.total_reviews,
+            'successRate': success_rate_str,
+            'isAiFree': expert.is_ai_free,
+            'comments': comments
         }
         output.append(expert_data)
 
     return jsonify({'experts': output})
+
+@app.route('/comments/<int:comment_id>', methods=['PATCH'])
+@jwt_required()
+def update_comment(comment_id):
+    current_user_id = get_jwt_identity()
+    current_user = User.query.get(current_user_id) 
+    if not current_user.is_admin:
+        return jsonify({'message': 'Unauthorized'}), 403
+        
+    comment = Comment.query.get_or_404(comment_id)
+    data = request.get_json()
+    
+    if 'content' in data:
+        comment.content = data['content']
+        db.session.commit()
+        
+    return jsonify({
+        'id': comment.id,
+        'content': comment.content,
+        'created_at': comment.created_at.isoformat(),
+        'user_name': comment.user.username
+    })
+
+@app.route('/comments/<int:comment_id>', methods=['DELETE'])
+# @jwt_required()
+def delete_comment(comment_id):
+    # current_user_id = get_jwt_identity()
+    # current_user = User.query.get(current_user_id) 
+    # if not current_user.is_admin:
+        # return jsonify({'message': 'Unauthorized'}), 403
+        
+    comment = Comment.query.get_or_404(comment_id)  
+    db.session.delete(comment)
+    db.session.commit()
+    
+    return '', 204
 
 class Projects(Resource):
     @jwt_required()
@@ -805,7 +929,7 @@ def request_expert():
     message = MessageModel(
         conversation_id=conversation.id,
         sender_id=get_jwt_identity(),
-        content=f"New project submitted: {project.project_title}\\nDescription: {project.project_description}\\nDeadline: {project.deadline.strftime('%Y-%m-%d')}",
+        content=f"New project submitted: {project.project_title}\nDescription: {project.project_description}\nDeadline: {project.deadline.strftime('%Y-%m-%d')}",
         attachments=project.attachments,
         receiver_id=data.get('expert_id'),
         expert_id=data.get('expert_id')
@@ -834,7 +958,6 @@ def request_expert():
 @jwt_required()
 def admn_send_message(conversation_id):
     try:
-
         sender_id = get_jwt_identity()
 
         conversation = Conversation.query.get_or_404(conversation_id)
@@ -899,15 +1022,65 @@ def admn_send_message(conversation_id):
     except Exception as e:
         return jsonify({'error': f'An unexpected error occurred: {str(e)}'}), 500
 
-@app.route('/conversations/<int:conversation_id>/messages', methods=['POST'])
+@app.route('/conversations', methods=['POST'])
+@jwt_required()
+def create_conversation():
+    data = request.get_json()
+    sender_id = get_jwt_identity()
+    
+    conversation = Conversation(
+        client_id=sender_id,
+        expert_id=data.get('expert_id'),
+        project_id=data.get('project_id')
+    )
+    
+    db.session.add(conversation)
+    db.session.commit()
+    
+    return jsonify({
+        'conversation_id': conversation.id,
+        'client_id': conversation.client_id,
+        'expert_id': conversation.expert_id
+    }), 201
+
+@app.route('/conversations/<conversation_id>/messages', methods=['POST'])
 @jwt_required()
 def send_message(conversation_id):
     try:
         sender_id = get_jwt_identity()
+        content = request.form.get('content','').strip()
+        files    = request.files.getlist('attachments')
 
-        conversation = Conversation.query.get_or_404(conversation_id)
+        try:
+            conversation_id = int(conversation_id)
+        except ValueError:
+            return jsonify({'error': 'Invalid conversation ID'}), 400
+        
+        if conversation_id == -1:
+            expert_id = request.form.get('expert_id')
+            if not expert_id:
+                return jsonify({'error': 'Expert ID is required for new conversations'}), 400
 
-        content = request.form.get('content')
+            conversation = Conversation.query.filter_by(
+                client_id=sender_id,
+                expert_id=expert_id
+            ).first()
+            if not conversation:
+                conversation = Conversation(
+                    client_id=sender_id,
+                    expert_id=expert_id
+                )
+                db.session.add(conversation)
+                db.session.commit()
+            conversation_id = conversation.id
+            conversation = Conversation.query.get_or_404(conversation_id)
+            return jsonify({'conversation_id': conversation_id}), 201
+            # print(f"Creating message with: conversation_id={conversation_id}, sender_id={sender_id}, content='{content}', attachments={files}")
+        else:
+            conversation = Conversation.query.get_or_404(conversation_id)
+            print(f"Creating message with: conversation_id={conversation_id}, sender_id={sender_id}, content='{content}', attachments={files}")
+
+        content = request.form.get('content','').strip()
         files = request.files.getlist('attachments')
 
         if not content and not files:
@@ -920,8 +1093,6 @@ def send_message(conversation_id):
                     filename = secure_filename(file.filename)
                     filepath = os.path.join(UPLOAD_FOLDER, filename)
                     file.save(filepath)
-
-
                     file_url = url_for('serve_file', filename=filename, _external=True)
                     attachments.append(file_url)
                 else:
@@ -960,14 +1131,16 @@ def send_message(conversation_id):
         send_email_with_mime(
             subject=email_subject,
             body=email_body,
-            recipients=['shadrack.bett.92@gmail.com', 'studypage001@gmail.com'],
+            recipients=['shadrack.bett.92@gmail.com','studypage001@gmail.com'],
             attachments=attachment_paths
         )
         return jsonify(message.to_dict()), 201
     except Exception as e:
+        traceback.print_exc()
         return jsonify({'error': f'An unexpected error occurred: {str(e)}'}), 500
 
     except Exception as e:
+        traceback.print_exc()
         return jsonify({'error': f'An unexpected error occurred: {str(e)}'}), 500
     
 @app.route('/admin/conversations', methods=['GET'])
