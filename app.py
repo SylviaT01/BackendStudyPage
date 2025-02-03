@@ -171,6 +171,16 @@ mail = Mail(app)
 s = URLSafeTimedSerializer(app.config['SECRET_KEY'])
 CORS(app,resources={r"/*": {"origins": "https://www.studypage.cloud/"}})
 
+@app.before_request
+def handle_options_request():
+    if request.method == 'OPTIONS':
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = 'https://www.studypage.cloud'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, POST, PUT, PATCH, DELETE, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+        return response
+
+
 # PAYSTACK_SECRET_KEY ="sk_test_e43f7706b3578021e3dc09d1ad730bf60c2e33c8"
 PAYSTACK_SECRET_KEY =os.environ.get('PAYSTACK_SECRET_KEY')
 @app.route('/verify-payment', methods=['POST'])
