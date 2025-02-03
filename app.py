@@ -435,7 +435,7 @@ def forgot_password():
     Hello {user.username},
     
     We received a request to reset your password. Click the link below to reset it:
-    {reset_url.replace("http://127.0.0.1:5000", "http://localhost:3001")}
+    {reset_url.replace("https://backendstudypage.onrender.com", "https://www.studypage.cloud/")}
 
     If you didn't request this, you can ignore this email.
 
@@ -668,7 +668,6 @@ def update_profile():
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": "Failed to update profile"}), 500
-
 
 
 @app.route('/admin/users', methods=['GET'])
